@@ -3,15 +3,17 @@
     <head>
             <meta charset="utf-8">
             <meta http-equiv="X-UA-Compatible" content="IE=edge">
-            <title>Flask Google Maps Full Map Example</title>
+            <title>Pokemon Radar</title>
+            <style>
+              .pokemon-list {position: fixed;top: 3rem;right: 1rem;z-index: 10000;text-align: right;background: rgb(255, 255, 255);padding: 0.25rem;border-radius: 5px;box-shadow: inset 5px 0px 0px RGBA(0,0,0,0.5),5px 5px 5px rgb(204, 204, 204);max-width:25%;}
+            </style>
     </head>
     <body>
-        <h1>Flask Google Maps Full Map Example</h1>
+        <div class="pokemon-list"></div>
         <div id="fullmap" style='height:100%;width:100%;top:0;left:0;position:absolute;z-index:200;'>
             {{ fullmap.html }}
-
         </div>
-        
+
 
     </body>
 {{ fullmap.js }}
@@ -24,20 +26,20 @@
         $('.label-countdown').each(function (index, element) {
             var disappearsAt = new Date(parseInt(element.getAttribute("disappears-at"))*1000);
             var now = new Date();
-            
+
             var difference = Math.abs(disappearsAt - now);
             var hours = Math.floor(difference / 36e5);
             var minutes = Math.floor((difference - (hours * 36e5)) / 6e4);
             var seconds = Math.floor((difference - (hours * 36e5) - (minutes * 6e4)) / 1e3);
-            
+
             if(disappearsAt < now){
                 timestring = "(expired)";
-            } 
+            }
             else {
                 timestring = "(";
                 if(hours > 0)
                     timestring = hours + "h";
-                
+
                 timestring += ("0" + minutes).slice(-2) + "m";
                 timestring += ("0" + seconds).slice(-2) + "s";
                 timestring += ")";
@@ -49,10 +51,13 @@
 
     window.setInterval(setLabelTime, 1000);
 
-  
+
   </script>
   {% if auto_refresh %}
     <script type="text/javascript">
+        var distinct_pokemon = {},
+            selected_pokemon_type = null;
+
         var baseURL = location.protocol + "//" + location.hostname + (location.port ? ":"+location.port: "");
         var options = {};
         var map = null;
@@ -145,10 +150,11 @@
             $.get(baseURL + "/data", function(response){
                 var json_obj = $.parseJSON(response);
                 var now = new Date();
-                
+
                 for (var index in json_obj) {
                     var item = json_obj[index];
                     var key = item["type"]+item["key"];
+
                     if(Object.keys(markerCache).indexOf(key) >= 0){
                         var needs_replacing = false;
                         if(item["type"] == "gym" && item["icon"] != markerCache[key].item.icon){
@@ -164,15 +170,23 @@
                             continue;
                         }
                     }
+
                     if(markerCache[key] != null && markerCache[key].marker != null){
                         markerCache[key].marker.setMap(null);
                     }
+
                     var marker = addMarker({
                             position: new google.maps.LatLng(item["lat"], item["lng"]),
                             map: map,
                             icon: item["icon"],
                         });
                     markerCache[key] = {item: item, marker: marker};
+
+                    if(item["type"] === "pokemon") {
+                        distinct_pokemon[item["icon"]] || (distinct_pokemon[item["icon"]] = [])
+                        distinct_pokemon[item["icon"]].push(marker)
+                    }
+
                     var disappearsAt;
 
                     if(item["disappear_time"] != null){
@@ -212,9 +226,41 @@
                     })(marker, disappearsAt);
                 }
                 // deleteMarkers(markers.Length - json_obj.length);
+
+                var $list = $(".pokemon-list")
+                $list.empty()
+                var list = []
+                for(var icon in distinct_pokemon) {
+                  var img = $('<img src="' + icon + '" width="32" height="32" />')
+                  img.data('markers', distinct_pokemon[icon])
+                  list.push({ img: img, number: parseInt(icon.split('/').pop().split('.')[0], 10) })
+                }
+
+                console.log(list)
+                list = list.sort(function(b, a) { return a - b; })
+                console.log(list)
+
+                list.forEach(function(i) { $list.append(i.img) })
             })
         }
+
         window.setInterval(updateMap, {{ auto_refresh }});
+
+        $(".pokemon-list").on('click', 'img', function onClickLegendIcon(e) {
+          var theseMarkers = $(this).data('markers'),
+              thisIcon     = $(this).attr('src')
+
+          var allMarkers = []
+          for(var icon in distinct_pokemon) allMarkers = allMarkers.concat(distinct_pokemon[icon])
+
+          allMarkers.forEach(function(m) {
+            var should_be_visible = selected_pokemon_type === thisIcon ||
+                                    theseMarkers.indexOf(m) !== -1
+            m.setVisible(should_be_visible)
+          })
+
+          selected_pokemon_type = thisIcon
+        })
     </script>
   {% endif %}
 </html>
